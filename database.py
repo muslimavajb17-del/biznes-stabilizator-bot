@@ -7,14 +7,13 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 USE_POSTGRES = DATABASE_URL.startswith("postgres")
 
 if USE_POSTGRES:
-    import psycopg2
-    import psycopg2.extras
+    import psycopg
+    from psycopg.rows import dict_row
 
 
 def get_conn():
     if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL)
-        return conn
+        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -24,18 +23,11 @@ def _fetchone(cursor):
     row = cursor.fetchone()
     if row is None:
         return None
-    if USE_POSTGRES:
-        cols = [desc[0] for desc in cursor.description]
-        return dict(zip(cols, row))
     return row
 
 
 def _fetchall(cursor):
-    rows = cursor.fetchall()
-    if USE_POSTGRES:
-        cols = [desc[0] for desc in cursor.description]
-        return [dict(zip(cols, row)) for row in rows]
-    return rows
+    return cursor.fetchall()
 
 
 def init_db():
