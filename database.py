@@ -228,10 +228,10 @@ def has_lesson_sent_today(user_id: int) -> bool:
 def get_stats():
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM users")
-        total = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM users WHERE subscribed=1")
-        active = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM users WHERE subscription_active=1")
-        paid = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) AS cnt FROM users")
+        total = _fetchone(cur)["cnt"]
+        cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE subscribed=1")
+        active = _fetchone(cur)["cnt"]
+        cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE subscription_active=1")
+        paid = _fetchone(cur)["cnt"]
         return total, active, paid
