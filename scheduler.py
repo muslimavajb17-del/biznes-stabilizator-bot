@@ -17,6 +17,34 @@ from messages import format_daily_message, FREE_LESSONS_COUNT
 logger = logging.getLogger(__name__)
 
 
+async def send_evening_checkin(bot: Bot):
+    users = get_all_subscribed()
+    sent = 0
+    logger.info("Вечерний чек-ин: %d подписчиков в очереди", len(users))
+
+    for user in users:
+        user_id = user["user_id"]
+        if not has_lesson_sent_today(user_id):
+            continue
+
+        try:
+            await bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "Добрый вечер! 🌇\n\n"
+                    "Как прошло сегодняшнее задание?\n\n"
+                    "Нажмите «✅ Выполнено» — зафиксируйте результат, пока свежо в памяти."
+                ),
+            )
+            sent += 1
+        except Forbidden:
+            unsubscribe(user_id)
+        except TelegramError as e:
+            logger.error("Ошибка чек-ина %d: %s", user_id, e)
+
+    logger.info("Вечерний чек-ин завершён: отправлено %d", sent)
+
+
 async def send_daily_messages(bot: Bot):
     users = get_all_subscribed()
     sent = skipped = 0
@@ -60,6 +88,13 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
         trigger=CronTrigger(hour=DAILY_HOUR, minute=DAILY_MINUTE, timezone="Europe/Moscow"),
         args=[bot],
         id="daily_messages",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        send_evening_checkin,
+        trigger=CronTrigger(hour=18, minute=0, timezone="Europe/Moscow"),
+        args=[bot],
+        id="evening_checkin",
         replace_existing=True,
     )
     return scheduler
