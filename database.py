@@ -50,6 +50,15 @@ def init_db():
                     situation_category    TEXT DEFAULT ''
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS results (
+                    id          SERIAL PRIMARY KEY,
+                    user_id     BIGINT,
+                    day_index   INTEGER,
+                    result_text TEXT,
+                    created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
         else:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -78,6 +87,15 @@ def init_db():
             for col, definition in new_cols.items():
                 if col not in existing:
                     cur.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS results (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id     INTEGER,
+                    day_index   INTEGER,
+                    result_text TEXT,
+                    created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
         conn.commit()
 
 
@@ -211,6 +229,49 @@ def increment_day(user_id: int):
                 (datetime.now().isoformat(), user_id),
             )
         conn.commit()
+
+
+def save_result(user_id: int, day_index: int, result_text: str):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                "INSERT INTO results (user_id, day_index, result_text) VALUES (%s, %s, %s)",
+                (user_id, day_index, result_text),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO results (user_id, day_index, result_text) VALUES (?, ?, ?)",
+                (user_id, day_index, result_text),
+            )
+        conn.commit()
+
+
+def get_results(user_id: int, limit: int = 7):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                "SELECT day_index, result_text, created_at FROM results WHERE user_id=%s ORDER BY created_at DESC LIMIT %s",
+                (user_id, limit),
+            )
+        else:
+            cur.execute(
+                "SELECT day_index, result_text, created_at FROM results WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+                (user_id, limit),
+            )
+        return _fetchall(cur)
+
+
+def get_results_count(user_id: int) -> int:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute("SELECT COUNT(*) AS cnt FROM results WHERE user_id=%s", (user_id,))
+        else:
+            cur.execute("SELECT COUNT(*) AS cnt FROM results WHERE user_id=?", (user_id,))
+        row = _fetchone(cur)
+        return row["cnt"] if row else 0
 
 
 def has_lesson_sent_today(user_id: int) -> bool:

@@ -37,6 +37,9 @@ from database import (
     get_user,
     get_stats,
     increment_day,
+    save_result,
+    get_results,
+    get_results_count,
 )
 from messages import (
     format_daily_message,
@@ -81,6 +84,7 @@ def main_keyboard():
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("📩 Действие на сегодня"), KeyboardButton("📊 Мой прогресс")],
+            [KeyboardButton("✅ Выполнено"),           KeyboardButton("📋 Мои результаты")],
             [KeyboardButton("💳 Подписка"),            KeyboardButton("❓ Помощь")],
         ],
         resize_keyboard=True,
@@ -365,24 +369,88 @@ async def cmd_admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ─── Фиксация результата ─────────────────────────────────────────────────────
+
+async def ask_for_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    db_user = get_user(user_id)
+    day = (db_user["day_index"] - 1) if db_user and db_user["day_index"] > 0 else 0
+    context.user_data["waiting_result"] = True
+    context.user_data["result_day"] = day
+    await update.message.reply_text(
+        "Отлично! 💪\n\n"
+        "📝 Напишите коротко — что получилось сегодня?\n"
+        "Например: «написал 3 клиентам, двое ответили» или «настроил напоминания в CRM»"
+    )
+
+
+async def save_result_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    result_text = update.message.text
+    day = context.user_data.pop("result_day", 0)
+    context.user_data.pop("waiting_result", None)
+
+    save_result(user_id, day, result_text)
+    count = get_results_count(user_id)
+
+    if count == 1:
+        streak = "Первый результат сохранён — это начало системы! 🌱"
+    elif count < 5:
+        streak = f"🔥 {count} результата сохранено — система строится!"
+    else:
+        streak = f"🔥 {count} результатов! Вы строите настоящую систему."
+
+    await update.message.reply_text(
+        f"✅ Результат сохранён!\n\n{streak}\n\n"
+        "Следующий фокус придёт завтра в 9:00.\n"
+        "📋 Посмотреть все результаты: /results",
+        reply_markup=main_keyboard(),
+    )
+
+
+async def cmd_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    results = get_results(user_id)
+    count = get_results_count(user_id)
+
+    if not results:
+        await update.message.reply_text(
+            "📋 Результатов пока нет.\n\n"
+            "После выполнения задания нажмите «✅ Выполнено» — "
+            "бот запишет ваш результат.",
+            reply_markup=main_keyboard(),
+        )
+        return
+
+    lines = [f"📋 Ваш дневник результатов ({count} выполнено)\n"]
+    for r in results:
+        lines.append(f"▸ День {r['day_index'] + 1}: {r['result_text']}")
+
+    await update.message.reply_text("\n".join(lines), reply_markup=main_keyboard())
+
+
 # ─── Кнопки основного меню ───────────────────────────────────────────────────
 
 async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
+    # Ожидаем ввод результата от пользователя
+    if context.user_data.get("waiting_result") and not text.startswith("/"):
+        await save_result_handler(update, context)
+        return
+
     if text == "📩 Действие на сегодня":
         await cmd_today(update, context)
     elif text == "📊 Мой прогресс":
         await cmd_progress(update, context)
+    elif text == "✅ Выполнено" or "выполнил" in text.lower() or "сделал" in text.lower():
+        await ask_for_result(update, context)
+    elif text == "📋 Мои результаты":
+        await cmd_results(update, context)
     elif text == "💳 Подписка":
         await cmd_subscribe(update, context)
     elif text == "❓ Помощь":
         await cmd_help(update, context)
-    elif "✅" in text or "выполнил" in text.lower() or "сделал" in text.lower():
-        await update.message.reply_text(
-            "Отлично! Каждое выполненное действие укрепляет систему работы с клиентами.\n"
-            "Следующий фокус придёт завтра утром."
-        )
 
 
 # ─── Запуск ──────────────────────────────────────────────────────────────────
@@ -419,6 +487,7 @@ def main():
     app.add_handler(CommandHandler("progress",  cmd_progress))
     app.add_handler(CommandHandler("subscribe", cmd_subscribe))
     app.add_handler(CommandHandler("stats",     cmd_admin_stats))
+    app.add_handler(CommandHandler("results",   cmd_results))
 
     # Платежи
     app.add_handler(CallbackQueryHandler(handle_subscribe_callback, pattern="^pay_"))
