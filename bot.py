@@ -41,6 +41,7 @@ from database import (
     get_results,
     get_results_count,
 )
+from offers import get_offers, OFFER_TYPES
 from messages import (
     format_daily_message,
     format_paywall_message,
@@ -85,10 +86,18 @@ def main_keyboard():
         [
             [KeyboardButton("📩 Действие на сегодня"), KeyboardButton("📊 Мой прогресс")],
             [KeyboardButton("✅ Выполнено"),           KeyboardButton("📋 Мои результаты")],
-            [KeyboardButton("💳 Подписка"),            KeyboardButton("❓ Помощь")],
+            [KeyboardButton("✍️ Оффер клиенту"),      KeyboardButton("💳 Подписка")],
+            [KeyboardButton("❓ Помощь")],
         ],
         resize_keyboard=True,
     )
+
+
+def offer_types_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(data["label"], callback_data=f"offer_{key}")]
+        for key, data in OFFER_TYPES.items()
+    ])
 
 
 def client_count_keyboard():
@@ -369,6 +378,37 @@ async def cmd_admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ─── Офферы клиентам ─────────────────────────────────────────────────────────
+
+async def cmd_offers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "✍️ Готовые офферы для ваших клиентов\n\n"
+        "Выберите тип сообщения — получите 3 шаблона под вашу нишу:",
+        reply_markup=offer_types_keyboard(),
+    )
+
+
+async def handle_offer_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    offer_type = query.data.replace("offer_", "")
+    user_id = update.effective_user.id
+    db_user = get_user(user_id)
+    niche = db_user["niche"] if db_user and db_user["niche"] else ""
+
+    offers = get_offers(offer_type, niche)
+    type_label = OFFER_TYPES.get(offer_type, {}).get("label", "Оффер")
+
+    lines = [f"{type_label} — готовые шаблоны:\n"]
+    for i, offer in enumerate(offers, 1):
+        lines.append(f"Вариант {i}:\n{offer}\n")
+
+    lines.append("💡 Замените [Имя] на имя клиента и отправляйте.")
+
+    await query.message.reply_text("\n".join(lines))
+
+
 # ─── Фиксация результата ─────────────────────────────────────────────────────
 
 async def ask_for_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -447,6 +487,8 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await ask_for_result(update, context)
     elif text == "📋 Мои результаты":
         await cmd_results(update, context)
+    elif text == "✍️ Оффер клиенту":
+        await cmd_offers(update, context)
     elif text == "💳 Подписка":
         await cmd_subscribe(update, context)
     elif text == "❓ Помощь":
@@ -488,6 +530,9 @@ def main():
     app.add_handler(CommandHandler("subscribe", cmd_subscribe))
     app.add_handler(CommandHandler("stats",     cmd_admin_stats))
     app.add_handler(CommandHandler("results",   cmd_results))
+
+    # Офферы
+    app.add_handler(CallbackQueryHandler(handle_offer_type, pattern="^offer_"))
 
     # Платежи
     app.add_handler(CallbackQueryHandler(handle_subscribe_callback, pattern="^pay_"))
