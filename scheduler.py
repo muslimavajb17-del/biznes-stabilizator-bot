@@ -54,10 +54,10 @@ async def send_daily_messages(bot: Bot):
 
 
 def create_scheduler(bot: Bot) -> AsyncIOScheduler:
-    scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
+    scheduler = AsyncIOScheduler()
     scheduler.add_job(
         send_daily_messages,
-        trigger=CronTrigger(hour=DAILY_HOUR, minute=DAILY_MINUTE),
+        trigger=CronTrigger(hour=DAILY_HOUR, minute=DAILY_MINUTE, timezone="Europe/Moscow"),
         args=[bot],
         id="daily_messages",
         replace_existing=True,
